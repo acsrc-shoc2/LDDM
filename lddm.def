@@ -101,7 +101,8 @@ From: ubuntu:22.04
     # dev extra already provides ipykernel. With pip available the call
     # reports the requirement as already satisfied and writes nothing, which
     # matters because the image is read-only by then.
-    uv pip install pip
+    # ipywidgets silences tqdm's "IProgress not found" warning in notebooks.
+    uv pip install pip ipywidgets
 
     echo "===== Creating bind-mount targets ====="
     # These are bound over by build_lddm.sh so results land in project space.
