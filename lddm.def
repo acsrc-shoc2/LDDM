@@ -58,23 +58,25 @@ From: ubuntu:22.04
 
     echo "===== Installing uv ====="
     # Pinned to the version LDDM 0.1.0 was tested with (uv 0.11.x)
-    wget -qO /tmp/uv.tar.gz \
+    # Unpack inside the image, not /tmp: the host's /tmp is bind-mounted into
+    # the build, so these paths would be shared with other users of the node.
+    mkdir -p /opt/build
+    wget -qO /opt/build/uv.tar.gz \
         https://github.com/astral-sh/uv/releases/download/0.11.32/uv-x86_64-unknown-linux-gnu.tar.gz
-    tar -xzf /tmp/uv.tar.gz -C /tmp
-    mv /tmp/uv-x86_64-unknown-linux-gnu/uv /usr/local/bin/uv
-    mv /tmp/uv-x86_64-unknown-linux-gnu/uvx /usr/local/bin/uvx
+    tar -xzf /opt/build/uv.tar.gz -C /opt/build
+    mv /opt/build/uv-x86_64-unknown-linux-gnu/uv /usr/local/bin/uv
+    mv /opt/build/uv-x86_64-unknown-linux-gnu/uvx /usr/local/bin/uvx
     chmod +x /usr/local/bin/uv /usr/local/bin/uvx
-    rm -rf /tmp/uv.tar.gz /tmp/uv-x86_64-unknown-linux-gnu
 
     echo "===== Building Reduce (required for programmable design) ====="
     # Same version as the upstream LDDM Dockerfile
-    cd /tmp
+    cd /opt/build
     wget -q https://github.com/rlabduke/reduce/archive/refs/tags/v4.15.tar.gz
     tar -xf v4.15.tar.gz
     cd reduce-4.15
     make
     cp reduce_src/reduce /usr/local/bin/
-    cd /tmp && rm -rf reduce-4.15 v4.15.tar.gz
+    cd /opt && rm -rf /opt/build
 
     echo "===== Installing Gnina (required for programmable design) ====="
     wget -q https://github.com/gnina/gnina/releases/download/v1.1/gnina \
@@ -89,7 +91,15 @@ From: ubuntu:22.04
     # The dev extra is what brings in ipykernel, which the Jupyter kernel needs.
     # cpu and cuda are declared as conflicting extras upstream, so only cuda here.
     cd /opt/lddm
-    export UV_CACHE_DIR=/tmp/uv-cache
+    # Deliberately NOT under /tmp. Apptainer bind-mounts the host's /tmp into
+    # the build, so /tmp/uv-cache here is the build machine's /tmp/uv-cache,
+    # shared with every other user of that node. On a NeSI login node it may
+    # already exist owned by someone else, and uv then dies with
+    # "Failed to initialize cache at /tmp/uv-cache: Permission denied".
+    # Worse, the cleanup below would be deleting that user's directory rather
+    # than ours. Keeping the cache inside the image makes the build
+    # self-contained and independent of whatever node it runs on.
+    export UV_CACHE_DIR=/opt/uv-cache
     export UV_PROJECT_ENVIRONMENT=/opt/lddm/.venv
     uv sync --extra cuda --extra dev --frozen
 
@@ -112,7 +122,7 @@ From: ubuntu:22.04
              /opt/lddm/data/synspace
 
     echo "===== Cleaning up ====="
-    rm -rf /tmp/uv-cache
+    rm -rf /opt/uv-cache
     apt-get clean
 
 %runscript
