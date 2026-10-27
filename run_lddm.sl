@@ -19,9 +19,15 @@
 # h100, a100 and pro_6000 all work, and the gres type is case-insensitive.
 #
 # l4 is the default because it is both quicker to get and fast enough: the
-# notebook's de novo and docking examples each took ~50s on an l4, against
-# upstream's quoted 1m20s and 55s on an H100. Uncomment the h100 line above
-# for larger --n_samples runs or the longer programmable design workflows.
+# notebook's de novo and docking examples took 51s and 50s on an l4, and the
+# whole programmable design workflow 7 min once its geometry cache is warm.
+#
+# Nothing here has been measured on an h100, so do not read those l4 numbers
+# as beating one. Upstream's quoted H100 figures were taken on different
+# hardware and are not a like-for-like comparison. Sampling is 100 sequential
+# integration steps over a batch of 16 small molecules, which is latency-bound
+# rather than throughput-bound, so a larger GPU may buy very little here.
+# Measure before paying the longer h100 queue for it.
 #
 # To run without a GPU, drop the line entirely and add --device cpu to the
 # sample.py calls in the notebook (5-10x slower).
