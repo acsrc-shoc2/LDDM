@@ -4,13 +4,21 @@
 #SBATCH --mem           20GB
 #SBATCH --cpus-per-task 4
 #SBATCH --account       uoa04517
-#SBATCH --gpus-per-node H100:1
+#SBATCH --gpus-per-node l4:1
+##SBATCH --gpus-per-node h100:1
 #SBATCH --job-name      lddm
 #SBATCH --output        lddm.log
 
-# The container is CUDA 12.4; A100, H100 and L4 all work. Swap the --gpus-per-node
-# line above if H100s are busy. To run without a GPU, drop it and add
-# --device cpu to the sample.py calls in the notebook (5-10x slower).
+# The container is CUDA 12.4, verified against NeSI driver 580.95.05; l4,
+# h100, a100 and pro_6000 all work, and the gres type is case-insensitive.
+#
+# l4 is the default because it is both quicker to get and fast enough: the
+# notebook's de novo and docking examples each took ~50s on an l4, against
+# upstream's quoted 1m20s and 55s on an H100. Uncomment the h100 line above
+# for larger --n_samples runs or the longer programmable design workflows.
+#
+# To run without a GPU, drop the line entirely and add --device cpu to the
+# sample.py calls in the notebook (5-10x slower).
 
 module load JupyterLab/2026.7.0-foss-2026-4.6.0
 
