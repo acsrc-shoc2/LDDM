@@ -93,6 +93,16 @@ From: ubuntu:22.04
     export UV_PROJECT_ENVIRONMENT=/opt/lddm/.venv
     uv sync --extra cuda --extra dev --frozen
 
+    echo "===== Seeding pip ====="
+    # nesi-add-kernel runs `python -m pip install ipykernel` inside the
+    # container unconditionally, without first checking whether ipykernel is
+    # present. uv-created venvs do not seed pip, so that call dies with
+    # "No module named pip" and kernel registration fails, even though the
+    # dev extra already provides ipykernel. With pip available the call
+    # reports the requirement as already satisfied and writes nothing, which
+    # matters because the image is read-only by then.
+    uv pip install pip
+
     echo "===== Creating bind-mount targets ====="
     # These are bound over by build_lddm.sh so results land in project space.
     mkdir -p /opt/lddm/checkpoints \

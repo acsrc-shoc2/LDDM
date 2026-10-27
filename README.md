@@ -69,6 +69,30 @@ Only the host driver is needed, and `apptainer --nv` provides it.
 Expect the built `.sif` to be roughly 4-5 GB (6.5 GB venv, compressed by
 SquashFS), so make sure there is room in project space before building.
 
+## Why the image ships pip
+
+`nesi-add-kernel` registers a container kernel by running
+
+```python
+subprocess.run([wrapper_script, "-m", "pip", "install", "ipykernel"], check=True)
+```
+
+unconditionally — it never checks whether `ipykernel` is already there. uv does
+not seed `pip` into the environments it creates, so without an explicit
+`uv pip install pip` the registration step fails with:
+
+```
+/opt/lddm/.venv/bin/python: No module named pip
+ERROR: the ipykernel package could not be installed in the kernel environment
+```
+
+even though `ipykernel` is installed and importable. With `pip` present the
+call reports the requirement as already satisfied and writes nothing, which it
+must, because the image is read-only by then.
+
+This will bite any container built around a uv or `python -m venv --without-pip`
+environment, not just this one.
+
 ## Paths must not contain spaces
 
 Apptainer bind strings are comma-separated and parsed unquoted. A space
