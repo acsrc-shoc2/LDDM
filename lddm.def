@@ -1,0 +1,125 @@
+# Plain Ubuntu, not an nvidia/cuda base image. The torch==2.6.0+cu124 wheel
+# vendors the whole CUDA 12.4 userspace (cuBLAS, cuDNN, NCCL, cuSPARSE, ...)
+# as nvidia-*-cu12 pip packages, so a CUDA base image only adds a second,
+# unused copy that can shadow the wheel's. Only the host driver is needed,
+# and `apptainer --nv` supplies that. Matches the upstream LDDM Dockerfile.
+Bootstrap: docker
+From: ubuntu:22.04
+
+%labels
+    Application lddm
+    Source https://github.com/LPDI-EPFL/lddm
+    Version 0.1.0
+
+%help
+    Apptainer container for LDDM (Large Drug Discovery Model):
+    "A Unified 3D Generative Model for Synthesizable Structure-Based Drug Design"
+    (Igashov et al., bioRxiv 2026, doi:10.64898/2026.09.15.751537)
+    https://github.com/LPDI-EPFL/lddm
+
+    The uv-managed virtual environment at /opt/lddm/.venv is on PATH, so
+    `python` inside the container is already the LDDM environment.
+
+    Gnina and Reduce are installed for the programmable design workflows.
+
+    Model checkpoints and the geometry reference are NOT baked into this
+    image. The main checkpoint is CC-BY-NC 4.0 licensed, so it is fetched
+    separately by build_lddm.sh into a bind-mounted checkpoints/ directory.
+
+%environment
+    export LDDM_HOME=/opt/lddm
+    export VIRTUAL_ENV=/opt/lddm/.venv
+    export PATH="/opt/lddm/.venv/bin:/usr/local/bin:${PATH}"
+    export PYTHONPATH="/opt/lddm:${PYTHONPATH}"
+    # uv must not try to re-resolve or write to the read-only image at runtime
+    export UV_PROJECT_ENVIRONMENT=/opt/lddm/.venv
+    export UV_FROZEN=1
+    export HDF5_USE_FILE_LOCKING=FALSE
+    # Keep numerical libraries from oversubscribing the Slurm allocation
+    export OMP_NUM_THREADS=${SLURM_CPUS_PER_TASK:-1}
+
+%post
+    set -e
+    export DEBIAN_FRONTEND=noninteractive
+
+    echo "===== Installing system packages ====="
+    apt-get update
+    apt-get install -y --no-install-recommends \
+        git \
+        wget \
+        vim \
+        ca-certificates \
+        build-essential \
+        libxrender1 \
+        libxext6 \
+        libgl1 \
+        libglib2.0-0
+    rm -rf /var/lib/apt/lists/*
+
+    echo "===== Installing uv ====="
+    # Pinned to the version LDDM 0.1.0 was tested with (uv 0.11.x)
+    wget -qO /tmp/uv.tar.gz \
+        https://github.com/astral-sh/uv/releases/download/0.11.32/uv-x86_64-unknown-linux-gnu.tar.gz
+    tar -xzf /tmp/uv.tar.gz -C /tmp
+    mv /tmp/uv-x86_64-unknown-linux-gnu/uv /usr/local/bin/uv
+    mv /tmp/uv-x86_64-unknown-linux-gnu/uvx /usr/local/bin/uvx
+    chmod +x /usr/local/bin/uv /usr/local/bin/uvx
+    rm -rf /tmp/uv.tar.gz /tmp/uv-x86_64-unknown-linux-gnu
+
+    echo "===== Building Reduce (required for programmable design) ====="
+    # Same version as the upstream LDDM Dockerfile
+    cd /tmp
+    wget -q https://github.com/rlabduke/reduce/archive/refs/tags/v4.15.tar.gz
+    tar -xf v4.15.tar.gz
+    cd reduce-4.15
+    make
+    cp reduce_src/reduce /usr/local/bin/
+    cd /tmp && rm -rf reduce-4.15 v4.15.tar.gz
+
+    echo "===== Installing Gnina (required for programmable design) ====="
+    wget -q https://github.com/gnina/gnina/releases/download/v1.1/gnina \
+        -O /usr/local/bin/gnina
+    chmod +x /usr/local/bin/gnina
+
+    echo "===== Cloning LDDM ====="
+    git clone --depth 1 --branch main https://github.com/LPDI-EPFL/lddm.git /opt/lddm
+
+    echo "===== Creating the CUDA environment with uv ====="
+    # --frozen installs exactly what uv.lock pins, with no re-resolution.
+    # The dev extra is what brings in ipykernel, which the Jupyter kernel needs.
+    # cpu and cuda are declared as conflicting extras upstream, so only cuda here.
+    cd /opt/lddm
+    export UV_CACHE_DIR=/tmp/uv-cache
+    export UV_PROJECT_ENVIRONMENT=/opt/lddm/.venv
+    uv sync --extra cuda --extra dev --frozen
+
+    echo "===== Creating bind-mount targets ====="
+    # These are bound over by build_lddm.sh so results land in project space.
+    mkdir -p /opt/lddm/checkpoints \
+             /opt/lddm/output \
+             /opt/lddm/data/validity3d \
+             /opt/lddm/data/synspace
+
+    echo "===== Cleaning up ====="
+    rm -rf /tmp/uv-cache
+    apt-get clean
+
+%runscript
+    export PATH="/opt/lddm/.venv/bin:${PATH}"
+    cd /opt/lddm
+    exec "$@"
+
+%test
+    export PATH="/opt/lddm/.venv/bin:/usr/local/bin:${PATH}"
+    export PYTHONPATH="/opt/lddm:${PYTHONPATH}"
+    python --version
+    python -c "import numpy; print('NumPy:', numpy.__version__)"
+    python -c "import torch; print('PyTorch:', torch.__version__)"
+    python -c "import torch_scatter; print('torch_scatter OK')"
+    python -c "import torch_geometric; print('PyG:', torch_geometric.__version__)"
+    python -c "import rdkit; print('RDKit:', rdkit.__version__)"
+    python -c "import lddm; print('lddm package OK')"
+    python -c "import ipykernel; print('ipykernel OK')"
+    gnina --version | head -1
+    reduce -version 2>&1 | head -1 || true
+    echo "All tests passed"
