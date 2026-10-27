@@ -35,12 +35,19 @@ chmod 640 lddm.sif
 # Writable work folders. The LDDM code and the .venv stay read-only inside the
 # image; only these directories are bound in, so results land in project space.
 # ---------------------------------------------------------------------------
-APPTAINER_HOME="/opt/lddm"
+# Where the project lives inside the image. NOT named APPTAINER_HOME: every
+# APPTAINER_* name is reserved as apptainer's own configuration, and
+# APPTAINER_HOME in particular overrides the container's home directory. As a
+# plain shell variable it was harmless, but exporting it -- or running this
+# script somewhere it is already set -- silently reconfigures the home mount
+# and makes unrelated binds fail with "destination ... doesn't exist in
+# container".
+CONTAINER_HOME="/opt/lddm"
 
 for d in examples configs; do
     if [ ! -d "$PROJDIR/$d" ]; then
         echo "Staging $d from the container"
-        apptainer exec lddm.sif cp -r "$APPTAINER_HOME/$d" "$PROJDIR/$d"
+        apptainer exec lddm.sif cp -r "$CONTAINER_HOME/$d" "$PROJDIR/$d"
     fi
 done
 
@@ -115,15 +122,15 @@ fi
 # ---------------------------------------------------------------------------
 module load JupyterLab/2026.7.0-foss-2026-4.6.0
 
-BIND_STRING="-B $PROJDIR/examples:$APPTAINER_HOME/examples"
-BIND_STRING="$BIND_STRING,$PROJDIR/configs:$APPTAINER_HOME/configs"
-BIND_STRING="$BIND_STRING,$PROJDIR/checkpoints:$APPTAINER_HOME/checkpoints"
-BIND_STRING="$BIND_STRING,$PROJDIR/data:$APPTAINER_HOME/data"
-BIND_STRING="$BIND_STRING,$PROJDIR/output:$APPTAINER_HOME/output"
+BIND_STRING="-B $PROJDIR/examples:$CONTAINER_HOME/examples"
+BIND_STRING="$BIND_STRING,$PROJDIR/configs:$CONTAINER_HOME/configs"
+BIND_STRING="$BIND_STRING,$PROJDIR/checkpoints:$CONTAINER_HOME/checkpoints"
+BIND_STRING="$BIND_STRING,$PROJDIR/data:$CONTAINER_HOME/data"
+BIND_STRING="$BIND_STRING,$PROJDIR/output:$CONTAINER_HOME/output"
 
 rm -rf /nesi/project/uoa04517/.jupyter/share/jupyter/kernels/lddm
 nesi-add-kernel lddm -cp lddm.sif \
-    --container-args="--nv --pwd $APPTAINER_HOME $BIND_STRING" \
+    --container-args="--nv --pwd $CONTAINER_HOME $BIND_STRING" \
     --shared -a "$GROUP"
 
 echo To bind local folders to inside container, use the following:
