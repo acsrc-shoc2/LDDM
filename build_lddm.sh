@@ -73,8 +73,11 @@ if [ ! -f "$PROJDIR/data/validity3d/ligands.sdf" ]; then
     wget -P "$PROJDIR/data/validity3d/" "$ZENODO/ligands.sdf"
 fi
 
-# SynSpace chemical space for the synthesizable design demo. Comment this block
-# out if you only need the basic workflows (it is a few hundred MB).
+# SynSpace chemical space for the synthesizable design demo. Five files,
+# about 12 MB in total, so there is little reason to skip it. The large
+# download is the geometry reference above (228 MB), which also grows roughly
+# 900 MB of cache beside itself the first time programmable or synthesizable
+# design runs.
 for f in building_blocks.csv building_blocks.pkl reactions.json \
          reaction_to_building_blocks.csv reaction_to_building_blocks.pkl; do
     if [ ! -f "$PROJDIR/data/synspace/$f" ]; then
@@ -85,6 +88,27 @@ done
 
 chgrp -R "$GROUP" "$PROJDIR"
 chmod -R g+rwX "$PROJDIR"
+
+# Verify every data file the notebook needs actually arrived. Running only
+# part of this script, or losing a download partway, otherwise shows up much
+# later as a missing-file error inside a notebook cell.
+MISSING=0
+for f in checkpoints/$CKPT \
+         data/validity3d/ligands.sdf \
+         data/synspace/building_blocks.pkl \
+         data/synspace/reactions.json \
+         data/synspace/reaction_to_building_blocks.pkl; do
+    if [ ! -s "$PROJDIR/$f" ]; then
+        echo "MISSING: $f" >&2
+        MISSING=1
+    fi
+done
+if [ "$MISSING" -ne 0 ]; then
+    echo "ERROR: data files are missing; re-run this script to fetch them." >&2
+    echo "The de novo, fragment and docking workflows still work without" >&2
+    echo "data/synspace; synthesizable design does not." >&2
+    exit 1
+fi
 
 # ---------------------------------------------------------------------------
 # Register the JupyterLab kernel
